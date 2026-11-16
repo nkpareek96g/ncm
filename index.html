@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Next-Concept Modeling Explained</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a 3D stage on the left, a reading panel on the right; one chapter at a time. Single light "drafting table" theme. */
+:root {
+  --bg: #e6e9ee;
+  --panel: #f8f9fb;
+  --ink: #17202b;
+  --muted: #586373;
+  --line: #d3d9e1;
+  --ar: #4b5665;
+  --diff: #c4553a;
+  --ncm: #1a5a86;
+  --ncm-light: #5cb6c2;
+  --masked: #c5cbd4;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 400 15px/1.55 var(--font-body); overflow: hidden; }
+
+#app { display: grid; grid-template-columns: minmax(0, 1fr) 410px; height: 100%; }
+#stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+#gl { display: block; width: 100%; height: 100%; touch-action: none; }
+#labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+
+#status { position: absolute; top: 16px; left: 16px; display: flex; gap: 8px; align-items: center; font: 500 13px/1 var(--font-mono); color: var(--ink); background: rgba(248, 249, 251, 0.92); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; font-variant-numeric: tabular-nums; }
+#status:empty { display: none; }
+#hint { position: absolute; bottom: 14px; left: 16px; font: 400 12px/1 var(--font-mono); color: var(--muted); }
+
+#panel { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+#panel header { padding: 22px 26px 14px; display: grid; gap: 6px; }
+.eyebrow { font: 400 11.5px/1.4 var(--font-mono); color: var(--muted); letter-spacing: 0.01em; }
+h1 { font: 600 30px/1.1 var(--font-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+.dek { margin: 0; color: var(--muted); font-size: 14.5px; }
+
+nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 0 26px 14px; border-bottom: 1px solid var(--line); }
+nav a { text-decoration: none; color: var(--muted); font: 500 12.5px/1.2 var(--font-body); padding: 8px 4px; border-radius: 6px; text-align: center; border: 1px solid transparent; }
+nav a span { display: block; font: 500 11px/1 var(--font-mono); margin-bottom: 4px; }
+nav a:hover { background: #eef1f5; color: var(--ink); }
+nav a[aria-current="page"] { color: var(--ink); background: #fff; border-color: var(--line); box-shadow: 0 1px 2px rgba(23, 32, 43, 0.06); }
+
+#chapters { flex: 1; overflow-y: auto; padding: 18px 26px 22px; }
+section.ch { display: none; gap: 12px; }
+section.ch.active { display: grid; }
+h2 { font: 600 21px/1.2 var(--font-display); margin: 0; text-wrap: balance; }
+h3 { font: 600 13px/1.3 var(--font-body); margin: 6px 0 0; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+p { margin: 0; }
+.legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.legend li { display: grid; grid-template-columns: 14px 1fr; gap: 10px; align-items: start; }
+.sw { width: 14px; height: 14px; border-radius: 3px; margin-top: 4px; }
+.legend b { font-weight: 600; }
+ol.steps { margin: 0; padding-left: 20px; display: grid; gap: 7px; }
+.note { font-size: 13.5px; color: var(--muted); border-left: 3px solid var(--line); padding: 2px 0 2px 12px; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.control { display: grid; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.control-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13.5px; }
+.control output { font: 500 13px var(--font-mono); }
+input[type="range"] { width: 100%; accent-color: var(--ncm); }
+
+.mask { display: grid; grid-template-columns: 120px 1fr; gap: 12px; align-items: center; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: 13px; color: var(--muted); }
+.mask svg { width: 120px; height: 120px; display: block; }
+.decoded { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 14px; }
+.decoded span { display: block; font: 400 11.5px/1.4 var(--font-mono); color: var(--muted); margin-bottom: 2px; }
+
+.seg { display: flex; gap: 4px; background: #eceff3; padding: 3px; border-radius: 8px; }
+.seg button { flex: 1; font: 500 13px var(--font-body); border: 0; background: transparent; color: var(--muted); padding: 7px 6px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(23, 32, 43, 0.1); }
+
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.table-wrap { overflow-x: auto; }
+th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 11px/1.3 var(--font-mono); color: var(--muted); }
+td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+th.num { text-align: right; }
+ul.caveats { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; }
+.sources { font-size: 12.5px; color: var(--muted); }
+.sources a { color: var(--ncm); }
+
+footer { display: flex; gap: 8px; padding: 12px 26px 16px; border-top: 1px solid var(--line); }
+footer button { font: 500 13.5px var(--font-body); border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 8px 14px; border-radius: 7px; cursor: pointer; }
+footer button.primary { background: var(--ink); color: #fff; border-color: var(--ink); margin-left: auto; }
+footer button:disabled { opacity: 0.4; cursor: default; }
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--ncm); outline-offset: 2px; }
+
+/* 3D labels */
+.lbl { font: 500 12px/1.25 var(--font-mono); color: var(--ink); background: rgba(248, 249, 251, 0.9); border: 1px solid var(--line); padding: 3px 7px; border-radius: 5px; white-space: nowrap; font-variant-numeric: tabular-nums; transition: opacity 0.25s; }
+.lbl.title { font: 600 14px/1.25 var(--font-body); padding: 5px 10px; text-align: center; }
+.lbl.title small { display: block; font: 500 12px/1.3 var(--font-mono); }
+.lbl.bare { background: none; border: 0; padding: 0; color: var(--muted); font-size: 11.5px; }
+.lbl.code { background: none; border: 0; padding: 0; color: #fff; font-size: 10.5px; }
+.lbl.word { background: none; border: 0; padding: 0; font: 500 10px/1 var(--font-mono); color: var(--ink); }
+.lbl.chip { color: #fff; border: 0; font-size: 13px; padding: 5px 10px; }
+
+@media (max-width: 860px) {
+  body { overflow: auto; }
+  #app { grid-template-columns: 1fr; grid-template-rows: 52vh auto; height: auto; min-height: 100%; }
+  #stage { height: 52vh; }
+  #panel { border-left: 0; border-top: 1px solid var(--line); }
+  #chapters { overflow: visible; }
+  #panel header { padding: 18px 16px 12px; }
+  nav, #chapters, footer { padding-left: 16px; padding-right: 16px; }
+  h1 { font-size: 26px; }
+  .lbl.word { display: none; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="gl" aria-label="3D diagram for the current chapter"></canvas>
+    <div id="labels"></div>
+    <div id="status" aria-live="polite"></div>
+    <div id="hint">Drag to orbit · scroll to zoom</div>
+  </div>
+
+  <aside id="panel">
+    <header>
+      <div class="eyebrow">arXiv 2610.14162 · Kumbong, Arora, Mirhoseini, Ré et al. · Oct 2026</div>
+      <h1>Next-Concept Modeling</h1>
+      <p class="dek">A language model that writes in levels: a rough sketch of the whole passage first, then finer and finer detail, with every piece of a level written at once.</p>
+    </header>
+
+    <nav aria-label="Chapters">
+      <a href="#compare" data-ch="compare"><span>1</span>Compare</a>
+      <a href="#tokenize" data-ch="tokenize"><span>2</span>Tokenize</a>
+      <a href="#generate" data-ch="generate"><span>3</span>Generate</a>
+      <a href="#results" data-ch="results"><span>4</span>Results</a>
+    </nav>
+
+    <div id="chapters">
+      <section class="ch" id="ch-compare">
+        <h2>Three ways to write 16 tokens</h2>
+        <p>Each wall shows one model writing the same 16-token sentence. Read it top to bottom: one row is one forward pass through the network, and each cube is a position the model works on in that pass.</p>
+        <ul class="legend">
+          <li><i class="sw" style="background: var(--ar)"></i><span><b>Next-token (GPT-style).</b> Writes one token per pass, reading everything before it (the faint cubes). 16 tokens take 16 passes.</span></li>
+          <li><i class="sw" style="background: var(--diff)"></i><span><b>Masked diffusion.</b> Every pass looks at all 16 positions and commits one more token (grey cubes are still masked). The paper's baselines use as many passes as tokens; cutting passes hurts quality.</span></li>
+          <li><i class="sw" style="background: var(--ncm)"></i><span><b>Next-Concept Modeling.</b> 5 passes. Pass 1 predicts one code for the whole passage, pass 2 predicts two, then 4, 8 and 16. Each pass fills its whole row at once.</span></li>
+        </ul>
+        <p class="note">At real scale, a 128-token LM1B sample takes NCM 12 passes against 128 for the diffusion baselines. This sketch doubles the level size each time; the paper tests several size schedules.</p>
+      </section>
+
+      <section class="ch" id="ch-tokenize">
+        <h2>Step 1: squeeze the text into levels of codes</h2>
+        <p>Before any generating, a tokenizer (a multiscale residual VQ-VAE) learns to describe a passage as a stack of discrete codes.</p>
+        <ol class="steps">
+          <li>The encoder turns each token into a latent vector. Here each one is drawn as a single bar; in the paper it has 384 numbers.</li>
+          <li>Level 1 summarizes the whole passage with one code, picked from a learned codebook of 4,096 to 8,192 entries.</li>
+          <li>Each next level uses more codes to describe what is still wrong (the residual) and adds its correction.</li>
+          <li>With every level in place, the decoder recovers the original tokens: 99.99% of them on OpenWebText.</li>
+        </ol>
+        <div class="control">
+          <div class="control-row"><label for="levels">Levels kept</label><output id="levels-out" for="levels">5 of 5</output></div>
+          <input type="range" id="levels" min="0" max="5" step="1" value="5">
+          <div class="control-row"><span>Gap between bars and outlines</span><output id="err-out">0.00</output></div>
+        </div>
+        <p class="note">Training sometimes drops the later levels (nested dropout), so the first few levels learn to carry the big picture on their own. Drag the slider to see how much each level adds.</p>
+      </section>
+
+      <section class="ch" id="ch-generate">
+        <h2>Step 2: generate the levels, coarse to fine</h2>
+        <p>A transformer builds the code stack from the top down. Each pass fills one whole level.</p>
+        <ol class="steps">
+          <li>Pass <i>k</i> gets the running reconstruction from the levels above, resized to the number of slots in level <i>k</i> (the outlines).</li>
+          <li>It predicts every code in that level in parallel.</li>
+          <li>After the last level, the tokenizer's decoder turns the stack into words.</li>
+        </ol>
+        <div class="mask">
+          <svg id="mask-svg" viewBox="0 0 31 31" role="img" aria-label="Block-diagonal attention mask with blocks of 1, 2, 4, 8 and 16 slots"></svg>
+          <div>Attention mask: slots in a level attend only to each other. Everything from earlier levels arrives through the input instead.</div>
+        </div>
+        <div class="decoded" id="decoded"><span>Decoded output</span>The old lighthouse keeper climbed the spiral stairs every night to light the lamp.</div>
+        <p class="note">The number of passes equals the number of levels, not the length of the text: 12 for 128 tokens (LM1B), 32 for 1,024 tokens (OpenWebText). The coarse levels are not readable drafts; the paper treats them as a plan.</p>
+      </section>
+
+      <section class="ch" id="ch-results">
+        <h2>What the paper reports</h2>
+        <p>Each slab is one forward pass, drawn to the same scale in both towers.</p>
+        <div class="seg" role="group" aria-label="Benchmark">
+          <button type="button" data-bench="lm1b" aria-pressed="true">LM1B</button>
+          <button type="button" data-bench="owt" aria-pressed="false">OpenWebText</button>
+          <button type="button" data-bench="sudoku" aria-pressed="false">Sudoku</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Benchmark</th><th class="num">Tokens</th><th class="num">Passes<br>NCM / diff.</th><th>Vs best diffusion model</th></tr></thead>
+            <tbody>
+              <tr><td>LM1B</td><td class="num">128</td><td class="num">12 / 128</td><td>Better perplexity, 21× faster</td></tr>
+              <tr><td>OpenWebText</td><td class="num">1,024</td><td class="num">32 / 1,024</td><td>Competitive, 10× faster</td></tr>
+              <tr><td>XSum summaries</td><td class="num">48</td><td class="num">8 / 64–128</td><td>Same ROUGE-L, 31× faster</td></tr>
+              <tr><td>Sudoku</td><td class="num">89</td><td class="num">12 / 128</td><td>Highest accuracy at every difficulty</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">Speedups are wall-clock time reported by the authors. Diffusion passes are for the main baselines; a few Sudoku baselines differ.</p>
+        <h3>Caveats</h3>
+        <ul class="caveats">
+          <li>Tested on small models only (largest: 725M parameters).</li>
+          <li>The tokenizer is trained first, then frozen.</li>
+          <li>Every input gets the same number of levels, easy or hard.</li>
+          <li>Tokenizer slips can garble exact names and numbers.</li>
+          <li>Speedups depend on the hardware and timing setup.</li>
+        </ul>
+        <p class="sources">Sources: <a href="https://arxiv.org/abs/2610.14162">paper on arXiv</a> · <a href="https://github.com/HazyResearch/ncm">code on GitHub</a></p>
+      </section>
+    </div>
+
+    <footer>
+      <button type="button" id="prev">← Back</button>
+      <button type="button" id="replay">Replay</button>
+      <button type="button" id="next" class="primary">Next →</button>
+    </footer>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/renderers/CSS2DRenderer.js"></script>
+<script>
+(function () {
+  "use strict";
+  if (!window.THREE) {
+    document.getElementById("status").textContent = "The 3D view could not load. The text on the right still explains each step.";
+    return;
+  }
+  THREE.ColorManagement.legacyMode = false;
+
+  const css = getComputedStyle(document.documentElement);
+  const tok = (n) => css.getPropertyValue(n).trim();
+  const COL = {
+    bg: tok("--bg"), ink: tok("--ink"), ar: tok("--ar"), diff: tok("--diff"),
+    ncm: tok("--ncm"), ncmLight: tok("--ncm-light"), masked: tok("--masked")
+  };
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- renderer, scene, camera ---------- */
+  const canvas = document.getElementById("gl");
+  const stage = document.getElementById("stage");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const labelRenderer = new THREE.CSS2DRenderer({ element: document.getElementById("labels") });
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(COL.bg);
+
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 600);
+  camera.position.set(0, 10, 40);
+  const controls = new THREE.OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.maxPolarAngle = Math.PI / 2 - 0.04;
+  controls.enablePan = true;
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xaab3bf, 0.85));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+  sun.position.set(14, 30, 22);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 120 });
+  sun.shadow.bias = -0.0005;
+  scene.add(sun);
+
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.ShadowMaterial({ opacity: 0.12 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  const grid = new THREE.GridHelper(200, 200, 0xc9cfd8, 0xd6dbe2);
+  grid.material.transparent = true;
+  grid.material.opacity = 0.55;
+  grid.position.y = 0.001;
+  scene.add(grid);
+
+  /* ---------- helpers ---------- */
+  const BOX = new THREE.BoxGeometry(1, 1, 1);
+  const EDGES = new THREE.EdgesGeometry(BOX);
+  const matCache = new Map();
+  function mat(color, opacity) {
+    const key = color + "|" + (opacity || 1);
+    if (!matCache.has(key)) {
+      const m = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0 });
+      if (opacity && opacity < 1) { m.transparent = true; m.opacity = opacity; m.depthWrite = false; }
+      matCache.set(key, m);
+    }
+    return matCache.get(key);
+  }
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x17202b, transparent: true, opacity: 0.22 });
+  const edgeMatGhost = new THREE.LineBasicMaterial({ color: 0x17202b, transparent: true, opacity: 0.35 });
+
+  function block(w, h, d, color, opts) {
+    opts = opts || {};
+    const m = new THREE.Mesh(BOX, opts.ghost ? mat(color, opts.opacity || 0.14) : mat(color));
+    m.scale.set(w, h, d);
+    m.castShadow = !opts.ghost;
+    m.receiveShadow = true;
+    if (opts.edges !== false) {
+      const e = new THREE.LineSegments(EDGES, opts.ghost ? edgeMatGhost : edgeMat);
+      m.add(e);
+    }
+    m.userData.base = new THREE.Vector3(w, h, d);
+    return m;
+  }
+  function outline(w, h, d) {
+    const e = new THREE.LineSegments(EDGES, edgeMatGhost);
+    e.scale.set(w, h, d);
+    e.userData.base = new THREE.Vector3(w, h, d);
+    return e;
+  }
+  function label(html, cls, pos) {
+    const el = document.createElement("div");
+    el.className = "lbl " + (cls || "");
+    el.innerHTML = html;
+    const o = new THREE.CSS2DObject(el);
+    o.position.copy(pos);
+    return o;
+  }
+  function setAppear(obj, p) {
+    const b = obj.userData.base;
+    const s = Math.max(0.0001, p);
+    obj.scale.set(b.x * s, b.y * s, b.z * s);
+    obj.visible = p > 0.001;
+  }
+  function setLabelAlpha(lbl, a) {
+    lbl.element.style.opacity = a;
+    lbl.visible = a > 0.01;
+  }
+  const lerpColor = (a, b, t) => "#" + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
+  function levelColor(k, K) { return lerpColor(COL.ncm, COL.ncmLight, K <= 1 ? 0 : (k - 1) / (K - 1)); }
+  function shade(hex, amt) {
+    const c = new THREE.Color(hex);
+    const hsl = {}; c.getHSL(hsl);
+    c.setHSL(hsl.h, hsl.s, Math.min(0.92, Math.max(0.08, hsl.l + amt)));
+    return "#" + c.getHexString();
+  }
+  function rng(seed) { return function () { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+  const easeOutBack = (t) => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+  const easeInOut = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+  const L = 16;            // tokens in the sketch
+  const LEVELS = [1, 2, 4, 8, 16];
+  const K = LEVELS.length;
+  const PITCH = 1, GAP = 0.14, ROW = 1, DEPTH = 0.9;
+  const WORDS = ["The", "old", "light", "house", "keeper", "climbed", "the", "spiral", "stairs", "every", "night", "to", "light", "the", "lamp", "."];
+
+  // A row of n blocks that together span all L positions.
+  function levelRow(n, x0, y, z, colorFn) {
+    const span = (L * PITCH) / n;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const cx = x0 + span * (i + 0.5);
+      out.push({ cx, w: span - GAP, i, color: colorFn(i), y, z });
+    }
+    return out;
+  }
+
+  /* ---------- timeline ---------- */
+  let timeline = null;
+  function play(items, total) {
+    timeline = { start: performance.now(), items, total };
+    if (reduceMotion) finishTimeline();
+  }
+  function finishTimeline() {
+    if (!timeline) return;
+    timeline.items.forEach((it) => it.fn(1));
+    timeline = null;
+  }
+  function seekTimeline(sec) {
+    if (!timeline) return;
+    timeline.items.forEach((it) => it.fn(Math.min(1, Math.max(0, (sec - it.at) / it.dur))));
+    timeline = null;
+  }
+  function tickTimeline(now) {
+    if (!timeline) return;
+    const t = (now - timeline.start) / 1000;
+    let done = true;
+    for (const it of timeline.items) {
+      const p = Math.min(1, Math.max(0, (t - it.at) / it.dur));
+      if (p < 1) done = false;
+      if (p !== it.last) { it.fn(p); it.last = p; }
+    }
+    if (done) timeline = null;
+  }
+
+  /* ---------- status pill ---------- */
+  const statusEl = document.getElementById("status");
+  function setStatus(text) { statusEl.textContent = text || ""; }
+
+  /* ---------- chapters ---------- */
+  let current = null;   // { id, group, anim(), cleanup? }
+  const CH = {};
+
+  // 1. Compare
+  CH.compare = {
+    box: new THREE.Box3(new THREE.Vector3(-29.5, 0, -1), new THREE.Vector3(29, 19.5, 1)),
+    dir: new THREE.Vector3(0.5, 0.3, 1),
+    build() {
+      const g = new THREE.Group();
+      const steps = []; // per step s: list of objects to pop in
+      const add = (s, o) => { (steps[s] = steps[s] || []).push(o); g.add(o); };
+      const walls = [
+        { x0: -28, name: "Next-token", sub: "16 passes", color: COL.ar },
+        { x0: -8, name: "Masked diffusion", sub: "16 passes", color: COL.diff },
+        { x0: 12, name: "Next-Concept Modeling", sub: "5 passes", color: COL.ncm }
+      ];
+      // Next-token: staircase, one new token per pass, faint context.
+      for (let s = 0; s < L; s++) {
+        const y = (L - 1 - s) + ROW / 2;
+        for (let i = 0; i <= s; i++) {
+          const isNew = i === s;
+          const b = block(PITCH - GAP, ROW - GAP, DEPTH, COL.ar, isNew ? {} : { ghost: true, opacity: 0.13, edges: false });
+          b.position.set(walls[0].x0 + i + 0.5, y, 0);
+          add(s, b);
+        }
+      }
+      // Masked diffusion: all positions every pass, one more unmasked each pass.
+      const r = rng(7);
+      const order = [...Array(L).keys()].sort(() => r() - 0.5);
+      const unmaskedAt = new Array(L);
+      order.forEach((pos, s) => { unmaskedAt[pos] = s; });
+      for (let s = 0; s < L; s++) {
+        const y = (L - 1 - s) + ROW / 2;
+        for (let i = 0; i < L; i++) {
+          const color = unmaskedAt[i] === s ? shade(COL.diff, 0.12) : unmaskedAt[i] < s ? COL.diff : COL.masked;
+          const b = block(PITCH - GAP, ROW - GAP, DEPTH, color);
+          b.position.set(walls[1].x0 + i + 0.5, y, 0);
+          add(s, b);
+        }
+      }
+      // NCM: K rows, coarse to fine.
+      const ncmRight = [];
+      LEVELS.forEach((n, k) => {
+        const y = (K - 1 - k) + ROW / 2;
+        levelRow(n, walls[2].x0, y, 0, (i) => shade(levelColor(k + 1, K), (i % 2 ? 0.05 : -0.02))).forEach((c) => {
+          const b = block(c.w, ROW - GAP, DEPTH, c.color);
+          b.position.set(c.cx, y, 0);
+          add(k, b);
+        });
+        const l = label(n + (n === 1 ? " code" : " codes"), "bare", new THREE.Vector3(walls[2].x0 + L + 1.6, y, 0));
+        add(k, l); ncmRight.push(l);
+      });
+      // Titles
+      const titles = walls.map((w, idx) => {
+        const top = idx === 2 ? K : L;
+        const l = label(w.name + "<small style=\"color:" + w.color + "\">" + w.sub + "</small>", "title", new THREE.Vector3(w.x0 + L / 2, top + 1.6, 0));
+        g.add(l);
+        return l;
+      });
+      const axis = label("pass 1<br>↓<br>↓<br>↓<br>pass 16", "bare", new THREE.Vector3(-30, 8, 0));
+      axis.element.style.textAlign = "center";
+      g.add(axis);
+      g.traverse((o) => { if (o.userData.base) setAppear(o, 1); });
+      this.steps = steps;
+      this.walls = walls;
+      return g;
+    },
+    anim() {
+      const items = [];
+      const dt = 0.32;
+      this.steps.forEach((objs, s) => {
+        objs.forEach((o) => {
+          if (o.isCSS2DObject) items.push({ at: 0.3 + s * dt, dur: 0.25, fn: (p) => setLabelAlpha(o, p) });
+          else items.push({ at: 0.3 + s * dt, dur: 0.28, fn: (p) => setAppear(o, easeOutBack(p)) });
+        });
+      });
+      items.push({ at: 0, dur: 0.3 + L * dt, fn: (p) => {
+        const pass = Math.min(L, Math.max(1, Math.ceil((p * (0.3 + L * dt) - 0.3) / dt)));
+        setStatus(p >= 1 ? "NCM finished after 5 passes; the others needed 16" : "Pass " + pass + " of 16" + (pass > K ? " · NCM already done" : ""));
+      } });
+      items.forEach((it) => it.fn(0));
+      return items;
+    },
+    rest() { setStatus("NCM finished after 5 passes; the others needed 16"); }
+  };
+
+  // 2. Tokenize
+  const TARGET = [2.4, 2.9, 3.3, 2.6, 1.6, 1.2, 1.9, 2.7, 3.5, 3.1, 2.2, 1.5, 1.0, 1.4, 2.3, 2.8];
+  const Q = 0.2; // codebook spacing in this sketch
+  const RECON = (function () {
+    const out = [new Array(L).fill(0)];
+    let rec = new Array(L).fill(0);
+    LEVELS.forEach((n) => {
+      const seg = L / n;
+      const next = rec.slice();
+      for (let j = 0; j < n; j++) {
+        let s = 0;
+        for (let i = j * seg; i < (j + 1) * seg; i++) s += TARGET[i] - rec[i];
+        const q = Math.round((s / seg) / Q) * Q;
+        for (let i = j * seg; i < (j + 1) * seg; i++) next[i] += q;
+      }
+      rec = next;
+      out.push(rec.slice());
+    });
+    return out;
+  })();
+  const rmse = (a) => Math.sqrt(a.reduce((s, v, i) => s + (v - TARGET[i]) ** 2, 0) / L);
+  function codeIndex(k, i) { const r = rng(1000 + k * 37 + i * 101); r(); return Math.floor(r() * 4096); }
+
+  CH.tokenize = {
+    box: new THREE.Box3(new THREE.Vector3(-12.5, 0, -0.6), new THREE.Vector3(10.5, 11.2, 0.6)),
+    dir: new THREE.Vector3(0.3, 0.2, 1),
+    build() {
+      const g = new THREE.Group();
+      const x0 = -L / 2;
+      this.bars = [];
+      this.rows = [];
+      // target outlines and reconstruction bars
+      for (let i = 0; i < L; i++) {
+        const t = outline(0.7, TARGET[i], 0.7);
+        t.position.set(x0 + i + 0.5, TARGET[i] / 2, 0);
+        g.add(t);
+        const b = block(0.62, 1, 0.62, COL.ink, { edges: false });
+        b.position.set(x0 + i + 0.5, 0.5, 0);
+        b.userData.h = 0.001;
+        g.add(b);
+        this.bars.push(b);
+      }
+      g.add(label("Latent per token<br>outline = target<br>solid = rebuilt", "bare", new THREE.Vector3(x0 - 2.6, 1.8, 0)));
+      // code levels, level 1 on top
+      const yBase = 4.7;
+      LEVELS.forEach((n, k) => {
+        const y = yBase + (K - 1 - k) + ROW / 2;
+        const objs = [];
+        levelRow(n, x0, y, 0, (i) => shade(levelColor(k + 1, K), ((codeIndex(k, i) % 3) - 1) * 0.02)).forEach((c) => {
+          const solid = block(c.w, ROW - GAP, DEPTH, c.color);
+          solid.position.set(c.cx, y, 0);
+          solid.userData.solidMat = solid.material;
+          solid.userData.fadeMat = mat(c.color, 0.16);
+          g.add(solid);
+          objs.push(solid);
+          if (k < 3) {
+            const cl = label("#" + String(codeIndex(k, c.i)).padStart(4, "0"), "code", new THREE.Vector3(c.cx, y, DEPTH / 2 + 0.02));
+            g.add(cl);
+            objs.push(cl);
+          }
+        });
+        const rl = label("Level " + (k + 1) + " · " + n + (n === 1 ? " code" : " codes"), "bare", new THREE.Vector3(x0 - 2.4, y, 0));
+        g.add(rl);
+        objs.push(rl);
+        this.rows.push(objs);
+      });
+      this.level = K;
+      this.applyLevel(K, true);
+      return g;
+    },
+    applyLevel(k, instant) {
+      this.level = k;
+      this.rows.forEach((objs, idx) => {
+        const on = idx < k;
+        objs.forEach((o) => {
+          if (o.isCSS2DObject) { o.element.style.opacity = on ? 1 : 0.35; }
+          else o.material = on ? o.userData.solidMat : o.userData.fadeMat;
+          if (o.children[0]) o.children[0].visible = on;
+        });
+      });
+      const rec = RECON[k];
+      this.bars.forEach((b, i) => { b.userData.h = Math.max(0.001, rec[i]); if (instant) setBar(b, b.userData.h); });
+      document.getElementById("levels").value = k;
+      document.getElementById("levels-out").textContent = k + " of " + K;
+      document.getElementById("err-out").textContent = rmse(rec).toFixed(2);
+      setStatus(k === 0 ? "No levels yet: nothing rebuilt" : "Using level" + (k > 1 ? "s 1–" + k : " 1") + " · " + LEVELS.slice(0, k).reduce((a, b) => a + b, 0) + " codes");
+    },
+    anim() {
+      const items = [];
+      this.applyLevel(0, true);
+      for (let k = 1; k <= K; k++) items.push({ at: 0.5 + (k - 1) * 1.0, dur: 0.01, fn: (p) => { if (p >= 1 && this.level < k) this.applyLevel(k); } });
+      return items;
+    },
+    rest() { this.applyLevel(K, true); },
+    frame() {
+      if (!this.bars) return;
+      this.bars.forEach((b) => {
+        const cur = b.scale.y;
+        const next = cur + (b.userData.h - cur) * (reduceMotion ? 1 : 0.14);
+        setBar(b, next);
+      });
+    }
+  };
+  function setBar(b, h) { b.scale.y = h; b.position.y = h / 2; b.visible = h > 0.01; }
+
+  // 3. Generate
+  CH.generate = {
+    box: new THREE.Box3(new THREE.Vector3(-11.5, 0, -0.6), new THREE.Vector3(10.5, 7.2, 1.4)),
+    dir: new THREE.Vector3(-0.18, 0.22, 1),
+    build() {
+      const g = new THREE.Group();
+      const x0 = -L / 2;
+      const yBase = 1.3;
+      this.levels = [];
+      LEVELS.forEach((n, k) => {
+        const y = yBase + (K - 1 - k) + ROW / 2;
+        const slots = [], solids = [];
+        levelRow(n, x0, y, 0, (i) => shade(levelColor(k + 1, K), ((codeIndex(k, i) % 3) - 1) * 0.02)).forEach((c) => {
+          const o = outline(c.w, ROW - GAP, DEPTH);
+          o.position.set(c.cx, y, 0);
+          g.add(o); slots.push(o);
+          const b = block(c.w, ROW - GAP, DEPTH, c.color);
+          b.position.set(c.cx, y, 0);
+          g.add(b); solids.push(b);
+        });
+        const rl = label("Pass " + (k + 1) + " · " + n + (n === 1 ? " code" : " codes"), "bare", new THREE.Vector3(x0 - 2.3, y, 0));
+        g.add(rl);
+        this.levels.push({ slots, solids, rl, n });
+      });
+      // word tiles on the ground
+      this.words = [];
+      WORDS.forEach((w, i) => {
+        const t = block(PITCH - GAP, 0.3, 1.2, "#ffffff");
+        t.position.set(x0 + i + 0.5, 0.15, 0.4);
+        g.add(t);
+        const wl = label(w, "word", new THREE.Vector3(x0 + i + 0.5, 0.32, 1.0));
+        g.add(wl);
+        this.words.push({ t, wl });
+      });
+      this.wordsLabel = label("Decoder output", "bare", new THREE.Vector3(x0 - 2.3, 0.2, 0.4));
+      g.add(this.wordsLabel);
+      this.rest();
+      return g;
+    },
+    setAll(p) {
+      this.levels.forEach((lv) => {
+        lv.slots.forEach((o) => setAppear(o, p));
+        lv.solids.forEach((o) => setAppear(o, p));
+        setLabelAlpha(lv.rl, p);
+      });
+      this.words.forEach((w) => { setAppear(w.t, p); setLabelAlpha(w.wl, p); });
+      setLabelAlpha(this.wordsLabel, p);
+    },
+    anim() {
+      this.setAll(0);
+      document.getElementById("decoded").style.opacity = 0.35;
+      const items = [];
+      const per = 1.25;
+      this.levels.forEach((lv, k) => {
+        const t0 = 0.4 + k * per;
+        items.push({ at: t0, dur: 0.01, fn: (p) => { if (p >= 1) setStatus("Pass " + (k + 1) + " of " + K + " · " + lv.n + (lv.n === 1 ? " code" : " codes at once")); } });
+        items.push({ at: t0, dur: 0.3, fn: (p) => { setLabelAlpha(lv.rl, p); lv.slots.forEach((o) => setAppear(o, p)); } });
+        items.push({ at: t0 + 0.45, dur: 0.4, fn: (p) => lv.solids.forEach((o) => setAppear(o, easeOutBack(p))) });
+      });
+      const tw = 0.4 + K * per + 0.2;
+      items.push({ at: tw, dur: 0.01, fn: (p) => { if (p >= 1) setStatus("Decoding all levels into 16 tokens"); } });
+      items.push({ at: tw, dur: 0.5, fn: (p) => {
+        this.words.forEach((w) => { setAppear(w.t, easeOutBack(p)); setLabelAlpha(w.wl, p); });
+        setLabelAlpha(this.wordsLabel, p);
+        if (p >= 1) { document.getElementById("decoded").style.opacity = 1; setStatus("Done: 5 passes, then one decode"); }
+      } });
+      return items;
+    },
+    rest() { this.setAll(1); document.getElementById("decoded").style.opacity = 1; setStatus("Done: 5 passes, then one decode"); }
+  };
+
+  // 4. Results
+  const BENCH = {
+    lm1b: { name: "LM1B", L: 128, ncm: 12, diff: 128, chip: "21× faster (wall-clock)" },
+    owt: { name: "OpenWebText", L: 1024, ncm: 32, diff: 1024, chip: "10× faster (wall-clock)" },
+    sudoku: { name: "Sudoku", L: 89, ncm: 12, diff: 128, chip: "Fewer passes, higher accuracy" }
+  };
+  let bench = "lm1b";
+  CH.results = {
+    box: new THREE.Box3(new THREE.Vector3(-10, 0, -1.5), new THREE.Vector3(10, 16.5, 1.5)),
+    dir: new THREE.Vector3(0.32, 0.22, 1),
+    build() {
+      const g = new THREE.Group();
+      const b = BENCH[bench];
+      const H = 13, W = 7, D = 3;
+      const pitch = H / b.diff;
+      const thick = Math.max(0.004, pitch * 0.62);
+      const geo = new THREE.BoxGeometry(1, 1, 1);
+      const m = new THREE.Matrix4();
+      // diffusion tower
+      const dm = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: COL.diff, roughness: 0.6 }), b.diff);
+      for (let i = 0; i < b.diff; i++) {
+        m.compose(new THREE.Vector3(-5, pitch * i + thick / 2, 0), new THREE.Quaternion(), new THREE.Vector3(W, thick, D));
+        dm.setMatrixAt(i, m);
+      }
+      dm.castShadow = true; dm.receiveShadow = true;
+      g.add(dm);
+      // NCM tower: one slab per level, stacked in the order they are generated (coarse first)
+      const nm = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }), b.ncm);
+      for (let k = 0; k < b.ncm; k++) {
+        m.compose(new THREE.Vector3(5, pitch * k + thick / 2, 0), new THREE.Quaternion(), new THREE.Vector3(W, thick, D));
+        nm.setMatrixAt(k, m);
+        nm.setColorAt(k, new THREE.Color(levelColor(k + 1, b.ncm)));
+      }
+      nm.castShadow = true; nm.receiveShadow = true;
+      g.add(nm);
+      const top = H;
+      g.add(label("Masked diffusion<small style=\"color:" + COL.diff + "\">" + b.diff.toLocaleString("en-US") + " passes</small>", "title", new THREE.Vector3(-5, top + 1.6, 0)));
+      const ncmTop = pitch * b.ncm;
+      g.add(label("NCM<small style=\"color:" + COL.ncm + "\">" + b.ncm + " passes</small>", "title", new THREE.Vector3(5, ncmTop + 1.6, 0)));
+      const chip = label(b.chip, "chip", new THREE.Vector3(5, ncmTop + 3.6, 0));
+      chip.element.style.background = COL.ncm;
+      g.add(chip);
+      g.add(label(b.name + " · " + b.L.toLocaleString("en-US") + " tokens · 1 slab = 1 forward pass", "bare", new THREE.Vector3(0, -0.9, 2.2)));
+      this.dm = dm; this.nm = nm; this.b = b;
+      return g;
+    },
+    anim() {
+      const b = this.b;
+      this.dm.count = 0; this.nm.count = 0;
+      const dur = b.diff > 500 ? 3.2 : 2.4;
+      return [{ at: 0.3, dur, fn: (p) => {
+        const n = Math.round(p * b.diff);
+        this.dm.count = n;
+        this.nm.count = Math.min(b.ncm, n);
+        setStatus("Pass " + Math.max(1, n).toLocaleString("en-US") + (n >= b.ncm ? " · NCM done at " + b.ncm : ""));
+        if (p >= 1) this.rest();
+      } }];
+    },
+    rest() {
+      this.dm.count = this.b.diff; this.nm.count = this.b.ncm;
+      setStatus(this.b.name + ": " + this.b.ncm + " passes vs " + this.b.diff.toLocaleString("en-US"));
+    }
+  };
+
+  /* ---------- camera fitting ---------- */
+  let camFrom = null, camTo = null, camT0 = 0;
+  function fitCamera(chap) {
+    const box = chap.box;
+    const center = box.getCenter(new THREE.Vector3());
+    const dir = chap.dir.clone().normalize();
+    const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), dir).normalize();
+    const up = new THREE.Vector3().crossVectors(dir, right).normalize();
+    const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const tanH = tanV * camera.aspect;
+    let d = 0;
+    for (let i = 0; i < 8; i++) {
+      const c = new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z).sub(center);
+      const f = c.dot(dir);
+      d = Math.max(d, Math.abs(c.dot(right)) / tanH + f, Math.abs(c.dot(up)) / tanV + f);
+    }
+    d *= 1.08;
+    return { pos: center.clone().add(dir.multiplyScalar(d)), target: center };
+  }
+  function moveCamera(chap, instant) {
+    const to = fitCamera(chap);
+    controls.minDistance = 4;
+    controls.maxDistance = to.pos.distanceTo(to.target) * 2.5;
+    if (instant || reduceMotion) {
+      camera.position.copy(to.pos); controls.target.copy(to.target); camTo = null; controls.update();
+      return;
+    }
+    camFrom = { pos: camera.position.clone(), target: controls.target.clone() };
+    camTo = to; camT0 = performance.now();
+  }
+
+  /* ---------- chapter switching ---------- */
+  const ORDER = ["compare", "tokenize", "generate", "results"];
+  function clearCurrent() {
+    if (!current) return;
+    current.group.traverse((o) => { if (o.isCSS2DObject && o.element.parentNode) o.element.parentNode.removeChild(o.element); });
+    scene.remove(current.group);
+    current.group.traverse((o) => { if (o.isInstancedMesh) { o.geometry.dispose(); o.material.dispose(); o.dispose && o.dispose(); } });
+    current = null;
+    timeline = null;
+  }
+  function show(id, animate) {
+    if (!CH[id]) id = "compare";
+    clearCurrent();
+    const chap = CH[id];
+    const group = chap.build();
+    scene.add(group);
+    current = { id, group, chap };
+    document.querySelectorAll("nav a").forEach((a) => a.setAttribute("aria-current", a.dataset.ch === id ? "page" : "false"));
+    document.querySelectorAll("section.ch").forEach((s) => s.classList.toggle("active", s.id === "ch-" + id));
+    const idx = ORDER.indexOf(id);
+    document.getElementById("prev").disabled = idx === 0;
+    const next = document.getElementById("next");
+    next.disabled = idx === ORDER.length - 1;
+    document.getElementById("chapters").scrollTop = 0;
+    resize();
+    moveCamera(chap, !animate);
+    if (animate && !reduceMotion) play(chap.anim(), 0);
+    else chap.rest();
+  }
+  function go(id) {
+    if (location.hash === "#" + id) show(id, true);
+    else location.hash = id;
+  }
+  window.addEventListener("hashchange", () => show(location.hash.slice(1), true));
+  document.getElementById("prev").addEventListener("click", () => { const i = ORDER.indexOf(current.id); if (i > 0) go(ORDER[i - 1]); });
+  document.getElementById("next").addEventListener("click", () => { const i = ORDER.indexOf(current.id); if (i < ORDER.length - 1) go(ORDER[i + 1]); });
+  document.getElementById("replay").addEventListener("click", () => show(current.id, true));
+  document.getElementById("levels").addEventListener("input", (e) => { if (current && current.id === "tokenize") { timeline = null; CH.tokenize.applyLevel(+e.target.value); } });
+  document.querySelectorAll(".seg button").forEach((btn) => btn.addEventListener("click", () => {
+    bench = btn.dataset.bench;
+    document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", b === btn ? "true" : "false"));
+    if (current && current.id === "results") show("results", true);
+  }));
+
+  // attention mask inset
+  (function () {
+    const svg = document.getElementById("mask-svg");
+    const ns = "http://www.w3.org/2000/svg";
+    const bg = document.createElementNS(ns, "rect");
+    bg.setAttribute("width", 31); bg.setAttribute("height", 31); bg.setAttribute("fill", "#eef1f5");
+    svg.appendChild(bg);
+    let off = 0;
+    LEVELS.forEach((n, k) => {
+      const r = document.createElementNS(ns, "rect");
+      r.setAttribute("x", off); r.setAttribute("y", off); r.setAttribute("width", n); r.setAttribute("height", n);
+      r.setAttribute("fill", levelColor(k + 1, K));
+      svg.appendChild(r);
+      off += n;
+    });
+  })();
+
+  /* ---------- sizing and loop ---------- */
+  function resize() {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    labelRenderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  let lastW = 0, lastH = 0;
+  new ResizeObserver(() => {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    if (w === lastW && h === lastH) return;
+    lastW = w; lastH = h;
+    resize();
+    if (current) moveCamera(current.chap, true);
+  }).observe(stage);
+
+  function loop(now) {
+    tickTimeline(now);
+    if (camTo) {
+      const p = Math.min(1, (now - camT0) / 900);
+      const e = easeInOut(p);
+      camera.position.lerpVectors(camFrom.pos, camTo.pos, e);
+      controls.target.lerpVectors(camFrom.target, camTo.target, e);
+      if (p >= 1) camTo = null;
+    }
+    if (current && current.chap.frame) current.chap.frame();
+    controls.update();
+    renderer.render(scene, camera);
+    labelRenderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  }
+
+  // Test hook: jump the current chapter's animation to a time in seconds.
+  window.NCM = { show, seek: (sec) => { if (current) { show(current.id, true); seekTimeline(sec); } } };
+
+  show(location.hash.slice(1) || "compare", false);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
